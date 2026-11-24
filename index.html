@@ -226,7 +226,7 @@
           <span class="px-2 py-0.5 text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded" id="footerStoreBranch">Cabang Sumedang</span>
         </div>
         <p class="text-xs text-slate-500 dark:text-slate-400" id="footerStoreAddress">Jl. Mayor Abdurahman No. 225, Plaza Asia Lt. GF No. 19-20</p>
-        <p class="text-[11px] text-slate-400 dark:text-slate-500" id="footerStoreHours">Jam Operasional: Setiap Hari 10.00 – 21.00 WIB</p>
+        <p class="text-[11px] text-slate-400 dark:text-slate-500" id="footerStoreHours">Jam Operasional: Setiap Hari 09.00 – 21.00 WIB</p>
       </div>
 
       <div class="flex flex-wrap items-center justify-center gap-2">
@@ -495,7 +495,7 @@
   <script>
     //<![CDATA[
     // ==========================================
-    // KONFIGURASI UTAMA (SESUAIKAN DENGAN TOKO)
+    // KONFIGURASI UTAMA (TERHUBUNG KE SHEET & APPS SCRIPT)
     // ==========================================
     const CONFIG = {
       STORE_NAME: "Planet Computer",
@@ -503,7 +503,7 @@
       STORE_ADDRESS: "Jl. Mayor Abdurahman No. 225, Plaza Asia Lt. GF No. 19-20",
       STORE_MAPS_URL: "https://www.google.com/maps/dir/?api=1&destination=Planet+Computer+Plaza+Asia+Sumedang+Jl.+Mayor+Abdurahman+No.+225",
 
-      // Kontak WhatsApp Terpisah: Sales Unit vs Teknisi Servis
+      // Kontak WhatsApp Sales & Servis
       WHATSAPP_SALES: "6285135240564",
       WHATSAPP_SERVICE: "6285135240564",
 
@@ -515,11 +515,11 @@
       MIN_INSTALLMENT_PRICE: 1000000,
 
       // Daftar Merek Utama untuk Deteksi Otomatis
-      SUPPORTED_BRANDS: ["ASUS", "Lenovo", "Acer", "HP", "Axioo", "MSI" , "Zyrex" , "Advan"],
+      SUPPORTED_BRANDS: ["ASUS", "Lenovo", "Acer", "HP", "Axioo", "MSI"],
 
-      // Paste URL CSV Google Sheets (Sheet 1: Katalog_Produk)
+      // URL CSV Google Sheets (Sheet 1: Katalog_Produk)
       SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vRxE80Pyis0tiaQ8b4INB3xIkDS4wfvQC_DRCrgnjWRaUQyJ7OD98O3jRqlYrcAMkqztFIhRtPqC0uJ/pub?gid=0&single=true&output=csv",
-      // Paste URL Web App Google Apps Script (Code.gs) untuk hitung view otomatis
+      // URL Web App Google Apps Script (Code.gs) untuk hitung view otomatis
       VIEW_TRACKER_WEBHOOK: "https://script.google.com/macros/s/AKfycbxc8EZuJZ7Ipncwq4g1DeqAYReM70KdfL4iM4P_QdlV3yXvYBq0EOrLxaG_ns8T8zwReQ/exec",
 
       // Gambar Cadangan Otomatis Berdasarkan Tipe Produk
@@ -1204,6 +1204,10 @@
               const hasNonPricePromo = promoInfo.length > 0;
               const images = parseImages(row["LINK GAMBAR"] || row["GAMBAR"], fallbackImg);
 
+              const bestSellerRaw = (row["BEST SELLER"] || "").trim().toUpperCase();
+              const bannerUrl = (row["BANNER SLIDER"] || "").trim();
+              const explicitRank = /^[1-5]$/.test(bestSellerRaw) ? parseInt(bestSellerRaw, 10) : 99;
+
               return {
                 sku: (row["NOMOR SKU"] || row["SKU"] || `SKU-${idx}`).trim(),
                 title,
@@ -1223,8 +1227,9 @@
                 finalPrice: hasPricePromo ? promoPrice : normalPrice,
                 stock: parseNumber(row["UNIT DALAM PERSEDIAAN"] || row["STOK"]),
                 images,
-                isBestSeller: (row["BEST SELLER"] || "").trim().toUpperCase() === "YA",
-                bannerUrl: (row["BANNER SLIDER"] || "").trim(),
+                isBestSeller: bestSellerRaw === "YA" || explicitRank <= 5,
+                bannerUrl,
+                sliderRank: explicitRank,
                 views: parseNumber(row["TOTAL DILIHAT"] || row["VIEWS"]) || Math.floor(Math.random() * 25) + 8
               };
             })
@@ -1255,12 +1260,27 @@
       });
     }
 
-    // 1. LANDING PAGE SLIDER
+    // 1. LANDING PAGE SLIDER (DENGAN PRIORITAS URUTAN 1-5 & BANNER KHUSUS)
     function initSlider() {
       const sliderEl = document.getElementById("heroSlider");
       const dotsEl = document.getElementById("sliderDots");
 
-      let featured = allProducts.filter(p => p.bannerUrl || p.isBestSeller || p.hasAnyPromo).slice(0, 5);
+      let featured = allProducts
+        .filter(p => p.bannerUrl || p.isBestSeller || p.hasAnyPromo)
+        .sort((a, b) => {
+          if (a.sliderRank !== b.sliderRank) return a.sliderRank - b.sliderRank;
+          const aHasBanner = a.bannerUrl ? 0 : 1;
+          const bHasBanner = b.bannerUrl ? 0 : 1;
+          if (aHasBanner !== bHasBanner) return aHasBanner - bHasBanner;
+          const aHasPromo = a.hasPricePromo ? 0 : 1;
+          const bHasPromo = b.hasPricePromo ? 0 : 1;
+          if (aHasPromo !== bHasPromo) return aHasPromo - bHasPromo;
+          const aBest = a.isBestSeller ? 0 : 1;
+          const bBest = b.isBestSeller ? 0 : 1;
+          return aBest - bBest;
+        })
+        .slice(0, 5);
+
       if (featured.length === 0) featured = allProducts.slice(0, 3);
 
       slideCount = featured.length;
